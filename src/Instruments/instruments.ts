@@ -1,7 +1,37 @@
-export const GetInstruments = (request: any, response: any) => {
-    response.status(200).jsonp({
-        "message": "No mock needed! This API can be directly called from https://api.kite.trade/instruments"
-    });
+const pool = require('../db');
+const { Parser } = require('json2csv');
+
+export const GetInstruments = async (request: any, response: any) => {
+    const client = await pool.connect();
+    try {
+        const instrumentFetch = await client.query('SELECT * FROM instruments');
+        const instruments = instrumentFetch.rows;
+
+        if (request.headers['x-kite-version']) {
+            const formattedInstruments = instruments.map((instrument: any) => {
+                const formattedInstrument = { ...instrument };
+                if (formattedInstrument.expiry && !isNaN(Date.parse(formattedInstrument.expiry))) {
+                  formattedInstrument.expiry = new Date(formattedInstrument.expiry).toISOString().split('T')[0];
+                }
+                return formattedInstrument;
+              });
+        
+            const fields = Object.keys(formattedInstruments[0]);
+            const json2csvParser = new Parser({ fields });
+            const csv = json2csvParser.parse(formattedInstruments);
+            response.header('Content-Type', 'text/csv');
+            response.attachment('instruments.csv');
+            return response.send(csv);
+        } else {
+           response.status(200).jsonp({
+             "message": "No mock needed! This API can be directly called from https://api.kite.trade/instruments"
+             });
+        }
+      } catch (error) {
+        console.error('Error executing query', error);
+        response.status(500).send('Internal Server Error');
+      }
+   
 }
 
 export const GetInstrumentsByExchange = (request: any, response: any) => {
